@@ -6,6 +6,9 @@
 #define uclog std::wclog
 #endif
 
+SOCKET ListenSocket = INVALID_SOCKET;
+std::array<utility::string_t, 8> ary;
+
 handler::handler() {}
 
 handler::handler(utility::string_t url) :m_listner(url) {
@@ -25,7 +28,7 @@ void respond(const http_request& request, const status_code& status, const json:
 
 void handler::handle_get(http_request message) {
 	//ucout <<"Client Message"<< message.to_string() << endl;
-    int flag = 0;
+	int flag = 0;
 	auto http_get_vars = uri::split_query(message.request_uri().query());
 
 	auto found_client = http_get_vars.find(U("client"));
@@ -36,6 +39,8 @@ void handler::handle_get(http_request message) {
 		const::utility::string_t request_status = found_start->second;
 		if (request_client == U("1") && request_status == U("ALL"))
 		{
+			ary[0] = U("1");
+			ary[1] = U("ALL");
 			uclog << U("Received request: ") << request_client << U(" with status: ") << request_status << endl;
 			respond(message, status_codes::OK, json::value::string(U("Request received for CKIM: ") + request_client));
 		}
@@ -82,134 +87,134 @@ void handler::handle_post(http_request message) {
 }
 
 SOCKET create_server() {
-    WSADATA wsaData;
-    int iResult;
+	WSADATA wsaData;
+	int iResult;
+	struct addrinfo* result = NULL;
+	struct addrinfo hints;
 
-    SOCKET ListenSocket = INVALID_SOCKET;
+	cout << "Initialising Winsock..." << endl;
+	// Initialize Winsock
+	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != 0) {
+		printf("WSAStartup failed with error: %d\n", iResult);
+		return 1;
+	}
 
-    struct addrinfo* result = NULL;
-    struct addrinfo hints;
+	cout << "Initialised." << endl;
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_PASSIVE;
 
-    cout << "Initialising Winsock..." << endl;
-    // Initialize Winsock
-    iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (iResult != 0) {
-        printf("WSAStartup failed with error: %d\n", iResult);
-        return 1;
-    }
+	// Resolve the server address and port
+	iResult = getaddrinfo(NULL, "27015", &hints, &result);
+	if (iResult != 0) {
+		printf("getaddrinfo failed with error: %d\n", iResult);
+		WSACleanup();
+		return 1;
+	}
 
-    cout << "Initialised." << endl;
-    ZeroMemory(&hints, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    hints.ai_flags = AI_PASSIVE;
+	// Create a SOCKET for connecting to server
+	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	if (ListenSocket == INVALID_SOCKET) {
+		printf("socket failed with error: %ld\n", WSAGetLastError());
+		freeaddrinfo(result);
+		WSACleanup();
+		return 1;
+	}
 
-    // Resolve the server address and port
-    iResult = getaddrinfo(NULL, "27015", &hints, &result);
-    if (iResult != 0) {
-        printf("getaddrinfo failed with error: %d\n", iResult);
-        WSACleanup();
-        return 1;
-    }
+	cout << "Socket created." << endl;
+	// Setup the TCP listening socket
+	iResult = ::bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
+	if (iResult == SOCKET_ERROR) {
+		printf("bind failed with error: %d\n", WSAGetLastError());
+		freeaddrinfo(result);
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
 
-    // Create a SOCKET for connecting to server
-    ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-    if (ListenSocket == INVALID_SOCKET) {
-        printf("socket failed with error: %ld\n", WSAGetLastError());
-        freeaddrinfo(result);
-        WSACleanup();
-        return 1;
-    }
+	uclog << "Bind done" << endl;
+	freeaddrinfo(result);
 
-    cout << "Socket created." << endl;
-    // Setup the TCP listening socket
-    iResult = ::bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
-    if (iResult == SOCKET_ERROR) {
-        printf("bind failed with error: %d\n", WSAGetLastError());
-        freeaddrinfo(result);
-        closesocket(ListenSocket);
-        WSACleanup();
-        return 1;
-    }
+	iResult = listen(ListenSocket, SOMAXCONN);
+	if (iResult == SOCKET_ERROR) {
+		printf("listen failed with error: %d\n", WSAGetLastError());
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
 
-    uclog << "Bind done" << endl;
-    freeaddrinfo(result);
+	uclog << "Waiting for incoming connections..." << endl;
 
-    iResult = listen(ListenSocket, SOMAXCONN);
-    if (iResult == SOCKET_ERROR) {
-        printf("listen failed with error: %d\n", WSAGetLastError());
-        closesocket(ListenSocket);
-        WSACleanup();
-        return 1;
-    }
-
-    uclog << "Waiting for incoming connections..." << endl;
-
-    return ListenSocket;
+	return ListenSocket;
 }
-    
+
 void accept_connection(SOCKET ListenSocket)
 {
-    SOCKET ClientSocket = INVALID_SOCKET;
-    char recvbuf[DEFAULT_BUFLEN];
-    int iResult;
-    int iSendResult;
-    int recvbuflen = DEFAULT_BUFLEN;
-    // Accept a client socket
-    ClientSocket = accept(ListenSocket, NULL, NULL);
-    if (ClientSocket == INVALID_SOCKET) {
-        printf("accept failed with error: %d\n", WSAGetLastError());
-        closesocket(ListenSocket);
-        WSACleanup();
-        return;
-    }
+	SOCKET ClientSocket = INVALID_SOCKET;
+	int iResult;
+	int iSendResult;
+	// Accept a client socket
+	ClientSocket = accept(ListenSocket, NULL, NULL);
+	if (ClientSocket == INVALID_SOCKET) {
+		printf("accept failed with error: %d\n", WSAGetLastError());
+		closesocket(ListenSocket);
+		WSACleanup();
+		return;
+	}
 
-    // No longer need server socket
-    closesocket(ListenSocket);
+	uclog << "Connection accepted from Client..." << endl;
+	// No longer need server socket
+	closesocket(ListenSocket);
 
-    // Receive until the peer shuts down the connection
-    do {
+	status_for_client(ClientSocket);
 
-        iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
-        if (iResult > 0) {
-            cout << "Data received : " << recvbuf << endl;
-            //printf("Bytes received: %d\n", iResult);
-            strcpy_s(recvbuf,"Test Paased");
-            // Echo the buffer back to the sender
-            cout << "Send Data to Client : " << endl;
-            //cin >> recvbuf;
-            iSendResult = send(ClientSocket, recvbuf, iResult, 0);
-            if (iSendResult == SOCKET_ERROR) {
-                printf("send failed with error: %d\n", WSAGetLastError());
-                closesocket(ClientSocket);
-                WSACleanup();
-                return;
-            }
-            //printf("Bytes sent: %d\n", iSendResult);
-        }
-        else if (iResult == 0)
-            printf("Connection closing...\n");
-        else {
-            printf("recv failed with error: %d\n", WSAGetLastError());
-            closesocket(ClientSocket);
-            WSACleanup();
-            return;
-        }
 
-    } while (iResult > 0);
+	// shutdown the connection since we're done
+	iResult = shutdown(ClientSocket, SD_SEND);
+	if (iResult == SOCKET_ERROR) {
+		printf("shutdown failed with error: %d\n", WSAGetLastError());
+		closesocket(ClientSocket);
+		WSACleanup();
+		return;
+	}
 
-    // shutdown the connection since we're done
-    iResult = shutdown(ClientSocket, SD_SEND);
-    if (iResult == SOCKET_ERROR) {
-        printf("shutdown failed with error: %d\n", WSAGetLastError());
-        closesocket(ClientSocket);
-        WSACleanup();
-        return;
-    }
+	// cleanup
+	closesocket(ClientSocket);
+	WSACleanup();
 
-    // cleanup
-    closesocket(ClientSocket);
-    WSACleanup();
+}
 
+void status_for_client(SOCKET ClientSocket) {
+	char status[6];
+	int iResult;
+	if (ary[0] == U("1"))
+	{
+		if (ary[1] == U("ALL"))
+		{
+			strcpy_s(status, "start");
+			uclog << "Sending status to client 1" << endl;
+			iResult = send(ClientSocket, status, (int)strlen(status), 0);
+			if (iResult == SOCKET_ERROR) {
+				printf("send failed with error: %d\n", WSAGetLastError());
+				closesocket(ClientSocket);
+				WSACleanup();
+				return;
+			}
+		}
+		else
+		{
+			strcpy_s(status, "stops");
+			uclog << "Sending status to client 1" << endl;
+			iResult = send(ClientSocket, status, (int)strlen(status), 0);
+			if (iResult == SOCKET_ERROR) {
+				printf("send failed with error: %d\n", WSAGetLastError());
+				closesocket(ClientSocket);
+				WSACleanup();
+				return;
+			}
+		}
+	}
 }

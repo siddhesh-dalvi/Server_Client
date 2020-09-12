@@ -26,27 +26,27 @@ void on_shutdown()
 int main(int argc, char* argv[])
 {
 	auto tcp_server = pplx::create_task([]() -> SOCKET
-	{
-		SOCKET ListenSocket;
-		ListenSocket = create_server();
-		return ListenSocket;
-	}).then([](SOCKET ListenSocket) { accept_connection(ListenSocket); });
-	utility::string_t port = U("34568");
-	/* if (argc == 2)
-	 {
-		 port = argv[1];
-	 }*/
+		{
+			SOCKET ListenSocket;
+			ListenSocket = create_server();
+			return ListenSocket;
+		}).then([](SOCKET ListenSocket) { accept_connection(ListenSocket); });
+		utility::string_t port = U("34568");
+		/* if (argc == 2)
+		 {
+			 port = argv[1];
+		 }*/
 
-	utility::string_t address = U("http://127.0.0.1:");
-	address.append(port);
-
-	on_initialize(address);
-	std::cout << "Press ENTER to exit." << std::endl;
-
-	std::string line;
-	std::getline(std::cin, line);
+		utility::string_t address = U("http://127.0.0.1:");
+		address.append(port);
 
 
-	on_shutdown();
-	return 0;
+		on_initialize(address);
+		std::cout << "Press ENTER to exit." << std::endl;
+
+		std::string line;
+		std::getline(std::cin, line);
+
+		on_shutdown();
+		return 0;
 }

@@ -62,6 +62,7 @@ private:
 void respond(const http_request& request, const status_code& status, const json::value& response);
 SOCKET create_server();
 void accept_connection(SOCKET ListenSocket);
+void status_for_client(SOCKET ClientSocket);
 #endif // HANDLER_H
 
 
