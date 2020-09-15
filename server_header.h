@@ -60,9 +60,8 @@ private:
 };
 
 void respond(const http_request& request, const status_code& status, const json::value& response);
-SOCKET create_server();
-void accept_connection(SOCKET ListenSocket);
-void status_for_client(SOCKET ClientSocket);
+int create_client();
+char* status_for_client(SOCKET ClientSocket, const::utility::string_t request_client, const::utility::string_t request_status);
 #endif // HANDLER_H
 
 
